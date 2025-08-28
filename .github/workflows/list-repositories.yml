@@ -1,68 +1,59 @@
-name: List Repositories   # Nom du workflow GitHub Actions
+name: List Repositories
 
 on:
   push:
     branches:
-      - main           # Déclenchement lors d’un push sur la branche main
-  workflow_dispatch:      # Permet de lancer le workflow manuellement depuis GitHub
+      - main
+  workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'  # Planification : exécution automatique tous les jours à minuit UTC
+    - cron: '0 0 * * *'  # Exécution tous les jours à minuit UTC
 
 jobs:
-  list_repositories:      # Nom du job
-    runs-on: ubuntu-latest  # Le job s'exécute sur une machine Ubuntu fournie par GitHub
+  list_repositories:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2  # Récupère le code source du dépôt courant
+        uses: actions/checkout@v2
 
       - name: Store repositories in a variable
         id: list_repositories
         run: |
           echo "Fetching repository list..."
           
-          # Récupération de la liste des dépôts publics et privés d'un utilisateur GitHub via l'API
-
           REPOS_JSON=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
                             -H "Accept: application/vnd.github.v3+json" \
                             https://api.github.com/users/theodemo/repos?type=all)
           
-          # Vérifie si la requête a renvoyé une erreur
           if echo "$REPOS_JSON" | jq -e 'has("message")' > /dev/null; then
             echo "❌ Error fetching repos:"
             echo "$REPOS_JSON"
             exit 1
           fi
 
-          # Transforme la liste en JSON simplifié contenant uniquement les infos utiles
           REPOS_LIST=$(echo "$REPOS_JSON" | jq -c '[.[] | {title: .name, description: (.description // "No description available"), url: .html_url, homepage: (.homepage // ""), full_name: .full_name, topics: (.topics // [])}]')
 
-          # Vérifie qu’il y a bien des dépôts disponibles
           if [ -z "$REPOS_LIST" ] || [ "$REPOS_LIST" == "[]" ]; then
             echo "❌ No repositories found for user theodemo."
             exit 1
           fi
 
-          # Stocke la liste des dépôts dans une variable d’environnement utilisable dans les prochains steps
           echo "REPOS_LIST=$REPOS_LIST" >> $GITHUB_ENV
 
       - name: Create Markdown files
         run: |
           echo "Creating Markdown files for each repository..."
-          mkdir -p _projects  # Dossier où seront stockés les fichiers générés
+          mkdir -p _projects  
 
-          # Parcours de chaque dépôt trouvé
           echo "$REPOS_LIST" | jq -c '.[]' | while read -r repo; do
             title=$(echo "$repo" | jq -r '.title')
             full_name=$(echo "$repo" | jq -r '.full_name')
 
-            # Ignore certains dépôts spécifiques (ex. le site lui-même)
             if [[ "$title" == "theodemo" || "$title" == "en" || "$title" == "mon-site-jekyll" || "$title" == "theodemo.github.io" ]]; then
               echo "⚠️ Repository '$title' ignored."
               continue
             fi
 
-            # Récupération des infos du dépôt
             description=$(echo "$repo" | jq -r '.description')
             url=$(echo "$repo" | jq -r '.url')
             homepage=$(echo "$repo" | jq -r '.homepage')
@@ -72,13 +63,12 @@ jobs:
               continue
             fi
 
-            # Détermination de la catégorie et sous-catégorie en fonction des topics GitHub
+            # Determine category and subcategory
             main_topic="Other"
             subcategory="General"
 
             for topic in $(echo "$repo" | jq -r '.topics[]'); do
               case "$topic" in
-                # Catégories Informatique
                 "software-development") main_topic="Computer Science"; subcategory="Software Development" ;;
                 "firmware-development") main_topic="Computer Science"; subcategory="Firmware Development" ;;
                 "data-engineering") main_topic="Computer Science"; subcategory="Data Engineering" ;;
@@ -87,7 +77,6 @@ jobs:
                 "artificial-intelligence") main_topic="Computer Science"; subcategory="Artificial Intelligence" ;;
                 "documentation") main_topic="Computer Science"; subcategory="Documentation" ;;
 
-                # Catégories Électronique
                 "pcb-design") main_topic="Electronics"; subcategory="PCB Design" ;;
                 "digital-system-design") main_topic="Electronics"; subcategory="Digital System Design" ;;
                 "power-electronics") main_topic="Electronics"; subcategory="Power Electronics" ;;
@@ -96,7 +85,6 @@ jobs:
                 "pcb-repair") main_topic="Electronics"; subcategory="PCB Repair" ;;
                 "digital-electronics") main_topic="Electronics"; subcategory="Digital Electronics" ;;
 
-                # Catégories Mécanique
                 "mechanical-design") main_topic="Mechanical Engineering"; subcategory="Mechanical Design" ;;
                 "analysis-simulation") main_topic="Mechanical Engineering"; subcategory="Analysis and Simulation" ;;
                 "fluid-mechanics") main_topic="Mechanical Engineering"; subcategory="Fluid Mechanics" ;;
@@ -106,7 +94,7 @@ jobs:
               esac
             done
 
-            # Vérifie si le repo contient un dossier d’images
+            # Clone repository to check for assets/img directory
             echo "Cloning repository '$title' to check assets/img directory..."
             if ! git clone --depth=1 "https://github.com/$full_name.git" "$title"; then
               echo "⚠️ Failed to clone repository '$title'. Continuing with the next repository..."
@@ -135,9 +123,9 @@ jobs:
               img_path="assets/img/projects/default.png"
             fi
 
-            rm -rf "$title"  # Supprime le repo cloné après vérification
+            rm -rf "$title"
 
-            # Création du fichier Markdown avec les métadonnées du dépôt
+            # Create markdown content
             markdown_content="---\n"
             markdown_content+="layout: page\n"
             markdown_content+="title: $title\n"
@@ -156,14 +144,13 @@ jobs:
 
             markdown_content+="---\n\n"
 
-            # Récupère une partie du README (section Overview jusqu’à License)
+            # Retrieve README content
             README_CONTENT=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
                             -H "Accept: application/vnd.github.v3.raw" \
                             https://api.github.com/repos/$full_name/readme)
 
             README_PART=$(echo "$README_CONTENT" | sed -n '/## 🚀 Overview/,/## 🌟 License/p' | sed '1d;$d')
 
-            # Nettoyage et adaptation du README pour le site Jekyll
             README_PART=$(echo "$README_PART" | sed '/!\[Main Preview\](assets\/img\/main.png)/d')
             README_PART=$(echo "$README_PART" | sed -E "s|(## [^\n]+)|\1\n|g")
             README_PART=$(echo "$README_PART" | sed -E "s|(### [^\n]+)|\1\n|g")
@@ -171,22 +158,16 @@ jobs:
 
             markdown_content+="$README_PART\n"
             
-            # Sauvegarde du fichier Markdown
             echo -e "$markdown_content" > "_projects/$title.md"
             echo "✅ Created _projects/$title.md"
           done
 
       - name: Commit and push changes
         run: |
-          # Configure Git pour le commit
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-
-          # Ajoute les nouveaux fichiers markdown et images
           git add _projects/*.md assets/img/projects/*
           git commit -m "Add Markdown files and images for repositories" || echo "No changes to commit"
-
-          # Pousse les changements sur la branche main
           git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
