@@ -3,7 +3,7 @@ name: List Repositories   # Nom du workflow GitHub Actions
 on:
   push:
     branches:
-      - main           # Déclenchement lors d’un push sur la branche master
+      - main           # Déclenchement lors d’un push sur la branche main
   workflow_dispatch:      # Permet de lancer le workflow manuellement depuis GitHub
   schedule:
     - cron: '0 0 * * *'  # Planification : exécution automatique tous les jours à minuit UTC
@@ -186,7 +186,7 @@ jobs:
           git add _projects/*.md assets/img/projects/*
           git commit -m "Add Markdown files and images for repositories" || echo "No changes to commit"
 
-          # Pousse les changements sur la branche master
-          git push origin master
+          # Pousse les changements sur la branche main
+          git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
